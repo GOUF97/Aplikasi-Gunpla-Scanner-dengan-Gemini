@@ -1,0 +1,41 @@
+# Xcode
+#
+build/
+*.xcodeproj/project.xcworkspace/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/
+.DS_Store
+DerivedData/
+*.hmap
+*.xccache
+*.swiftpm/
+
+# User Interface State
+#
+*.xcuserstate
+xcuserdata/
+
+# Swift Package Manager
+#
+.swiftpm/
+.build/
+
+# CocoaPods (jika menggunakan pods)
+#
+Pods/
+*.xcworkspace
+
+# Carthage (jika menggunakan Carthage)
+#
+Carthage/Build/
+
+# Fastlane (jika menggunakan fastlane)
+#
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# Environment Variables & Secret Keys (Sangat Penting!)
+#
+.env
