@@ -15,38 +15,23 @@ extension UIImage {
         return UIGraphicsGetImageFromCurrentImageContext()?.cgImage
     }
     
-    // Fungsi crop presisi yang memperhitungkan rasio resizeAspectFill kamera
     func cropToCenterBox(boxSize: CGSize, in screenSize: CGSize) -> UIImage {
-        // 1. Ambil CIImage yang secara otomatis menangani orientasi asli kamera
         let ciImage = CIImage(image: self) ?? CIImage(cgImage: self.safeCGImage!)
-        let imageSize = ciImage.extent.size
+        let inputSize = ciImage.extent.size
         
-        // 2. Karena preview layer menggunakan .resizeAspectFill, hitung skala maksimalnya
-        let widthRatio = screenSize.width / imageSize.width
-        let heightRatio = screenSize.height / imageSize.height
-        let scale = max(widthRatio, heightRatio)
+        let scale = min(inputSize.width / screenSize.width, inputSize.height / screenSize.height)
         
-        // 3. Hitung ukuran dan offset gambar setelah diskala ke layar
-        let scaledWidth = imageSize.width * scale
-        let scaledHeight = imageSize.height * scale
-        let xOffset = (scaledWidth - screenSize.width) / 2
-        let yOffset = (scaledHeight - screenSize.height) / 2
-        
-        // 4. Posisi kotak panduan di tengah layar
         let screenBoxX = (screenSize.width - boxSize.width) / 2
         let screenBoxY = (screenSize.height - boxSize.height) / 2
         
-        // 5. Petakan koordinat layar ke koordinat piksel asli gambar
-        let imageBoxX = (screenBoxX + xOffset) / scale
-        let imageBoxY = (screenBoxY + yOffset) / scale
-        let imageBoxWidth = boxSize.width / scale
-        let imageBoxHeight = boxSize.height / scale
+        let imageX = screenBoxX * scale + (inputSize.width - screenSize.width * scale) / 2
+        let imageY = screenBoxY * scale + (inputSize.height - screenSize.height * scale) / 2
+        let cropWidth = boxSize.width * scale
+        let cropHeight = boxSize.height * scale
         
-        // 6. Sesuaikan koordinat sumbu Y untuk Core Image (dimulai dari bawah-kiri)
-        let ciY = imageSize.height - (imageBoxY + imageBoxHeight)
-        let cropRect = CGRect(x: imageBoxX, y: ciY, width: imageBoxWidth, height: imageBoxHeight)
+        let ciY = inputSize.height - (imageY + cropHeight)
+        let cropRect = CGRect(x: imageX, y: ciY, width: cropWidth, height: cropHeight)
         
-        // 7. Lakukan pemotongan (cropping)
         let croppedCI = ciImage.cropped(to: cropRect)
         
         let context = CIContext(options: nil)
