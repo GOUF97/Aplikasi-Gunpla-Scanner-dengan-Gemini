@@ -1,104 +1,135 @@
 import SwiftUI
 import AVFoundation
 
-struct CameraView: UIViewControllerRepresentable {
-    var onFrameCaptured: (UIImage) -> Void
+struct CameraView: View {
+    var onCapture: (UIImage) -> Void
+    
+    @State private var cameraController = CameraController()
 
-    func makeUIViewController(context: Context) -> CameraViewController {
-        let controller = CameraViewController()
-        controller.onFrameCaptured = onFrameCaptured
-        return controller
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Color.black
+                .edgesIgnoringSafeArea(.all)
+            
+            CameraPreview(controller: cameraController)
+                .edgesIgnoringSafeArea(.all)
+            
+            Button(action: {
+                cameraController.captureImage { image in
+                    if let image = image {
+                        onCapture(image)
+                    }
+                }
+            }) {
+                ZStack {
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 75, height: 75)
+                    Circle()
+                        .stroke(Color.black, lineWidth: 2)
+                        .frame(width: 65, height: 65)
+                }
+            }
+            .padding(.bottom, 90)
+        }
+        .onAppear {
+            cameraController.startSession()
+        }
+        .onDisappear {
+            cameraController.stopSession()
+        }
     }
-
-    func updateUIViewController(_ uiViewController: CameraViewController, context: Context) {}
 }
 
-class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDelegate {
-    var captureSession: AVCaptureSession!
-    var previewLayer: AVCaptureVideoPreviewLayer!
-    var onFrameCaptured: ((UIImage) -> Void)?
-    
-    private let videoOutputQueue = DispatchQueue(label: "com.app.videoOutputQueue", qos: .userInitiated)
-    private var frameCounter = 0 // Variabel untuk pembatas frame agar tidak overload
-    
-    // Inisialisasi CIContext satu kali di luar fungsi agar performa jauh lebih optimal
-    private let ciContext = CIContext()
+class CameraController: NSObject {
+    let session = AVCaptureSession()
+    private let output = AVCapturePhotoOutput()
+    private var completion: ((UIImage?) -> Void)?
 
-    override func viewDidLoad() {
-        super.viewDidLoad()
+    func startSession() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            if !self.session.isRunning {
+                self.session.beginConfiguration()
+                
+                if self.session.canSetSessionPreset(.high) {
+                    self.session.sessionPreset = .high
+                }
+                
+                if self.session.inputs.isEmpty {
+                    guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+                          let input = try? AVCaptureDeviceInput(device: device),
+                          self.session.canAddInput(input) else {
+                        self.session.commitConfiguration()
+                        return
+                    }
+                    self.session.addInput(input)
+                }
+                
+                if self.session.outputs.isEmpty {
+                    if self.session.canAddOutput(self.output) {
+                        self.session.addOutput(self.output)
+                    }
+                }
+                
+                self.session.commitConfiguration()
+                self.session.startRunning()
+            }
+        }
+    }
+
+    func stopSession() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            if self.session.isRunning {
+                self.session.stopRunning()
+            }
+        }
+    }
+
+    func captureImage(completion: @escaping (UIImage?) -> Void) {
+        self.completion = completion
+        let settings = AVCapturePhotoSettings()
+        output.capturePhoto(with: settings, delegate: self)
+    }
+}
+
+extension CameraController: AVCapturePhotoCaptureDelegate {
+    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        if let error = error {
+            print("DEBUG: Gagal mengambil foto: \(error.localizedDescription)")
+            completion?(nil)
+            return
+        }
+        
+        guard let data = photo.fileDataRepresentation(), let image = UIImage(data: data) else {
+            print("DEBUG: Gagal mengonversi data foto ke UIImage")
+            completion?(nil)
+            return
+        }
+        
+        completion?(image)
+    }
+}
+
+struct CameraPreview: UIViewRepresentable {
+    var controller: CameraController
+
+    func makeUIView(context: Context) -> UIView {
+        let view = VideoPreviewView()
         view.backgroundColor = .black
-        setupCamera()
+        view.previewLayer.session = controller.session
+        view.previewLayer.videoGravity = .resizeAspectFill
+        return view
     }
 
-    private func setupCamera() {
-        captureSession = AVCaptureSession()
-        captureSession.sessionPreset = .high
-        
-        guard let videoCaptureDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-            return
-        }
-        
-        do {
-            let videoInput = try AVCaptureDeviceInput(device: videoCaptureDevice)
-            
-            if captureSession.canAddInput(videoInput) {
-                captureSession.addInput(videoInput)
-            } else {
-                return
-            }
-            
-            let videoOutput = AVCaptureVideoDataOutput()
-            videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
-            
-            if captureSession.canAddOutput(videoOutput) {
-                captureSession.addOutput(videoOutput)
-                videoOutput.setSampleBufferDelegate(self, queue: videoOutputQueue)
-                videoOutput.alwaysDiscardsLateVideoFrames = true
-            } else {
-                return
-            }
-            
-        } catch {
-            print("Gagal menginisialisasi input kamera: \(error.localizedDescription)")
-            return
-        }
-        
-        previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
-        previewLayer.videoGravity = .resizeAspectFill
-        view.layer.addSublayer(previewLayer)
-        
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.captureSession.startRunning()
-        }
-    }
+    func updateUIView(_ uiView: UIView, context: Context) {}
 
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        previewLayer?.frame = view.bounds
-    }
-
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.captureSession?.stopRunning()
+    class VideoPreviewView: UIView {
+        override class var layerClass: AnyClass {
+            return AVCaptureVideoPreviewLayer.self
         }
-    }
-
-    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        // Ganti angka 10 dengan 5 agar pemindaian lebih sering dan responsif
-        frameCounter += 1
-        guard frameCounter % 5 == 0 else { return }
         
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else { return }
-        
-        let uiImage = UIImage(cgImage: cgImage)
-        
-        DispatchQueue.main.async { [weak self] in
-            self?.onFrameCaptured?(uiImage)
+        var previewLayer: AVCaptureVideoPreviewLayer {
+            return self.layer as! AVCaptureVideoPreviewLayer
         }
     }
 }

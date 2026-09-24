@@ -4,5 +4,7 @@
 <dict>
 	<key>Privacy - Photo Library Usage Description (NSPhotoLibraryUsageDescription</key>
 	<string>Aplikasi ini memerlukan akses ke galeri foto untuk memindai gambar atau foto kit Gunpla pilihan Anda.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Aplikasi ini memerlukan akses kamera untuk memindai figur dan teks Gunpla secara langsung.</string>
 </dict>
 </plist>
